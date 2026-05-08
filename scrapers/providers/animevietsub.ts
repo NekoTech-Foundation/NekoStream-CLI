@@ -1081,14 +1081,17 @@ export class AnimeVietsubProvider extends BaseScraper {
       let episodeUrl: string
       let html: string
       
-      if (episodeId.startsWith('http')) {
-        episodeUrl = episodeId
-      } else if (episodeId.includes('/')) {
-        episodeUrl = `${this.baseUrl}${episodeId}`
-      } else if (/^\d+$/.test(episodeId)) {
-        // Numeric data-id from episode list is not a valid watch URL by itself.
+      let numericId: string | null = null
+      if (/^\d+$/.test(episodeId)) {
+        numericId = episodeId
+      } else {
+        const match = episodeId.match(/-(\d+)(?:\.html)?(?:[/?#]|$)/i)
+        if (match) numericId = match[1]
+      }
+
+      if (numericId) {
         // Use ajax endpoint to resolve server links directly.
-        const response = await fetch(`${this.baseUrl}/ajax/player?v=${encodeURIComponent(episodeId)}`, {
+        const response = await fetch(`${this.baseUrl}/ajax/player?v=${encodeURIComponent(numericId)}`, {
           headers: this.buildRequestHeaders({
             'X-Requested-With': 'XMLHttpRequest',
             'Referer': this.baseUrl
@@ -1112,10 +1115,13 @@ export class AnimeVietsubProvider extends BaseScraper {
             return servers
           }
         }
-        episodeUrl = `${this.baseUrl}/xem-phim/${episodeId}.html`
+      }
+
+      if (episodeId.startsWith('http')) {
+        episodeUrl = episodeId
+      } else if (episodeId.includes('/')) {
+        episodeUrl = `${this.baseUrl}${episodeId}`
       } else {
-        // Try to construct URL from episode ID or slug
-        // First, check if it's a numeric ID - we need the anime context
         episodeUrl = `${this.baseUrl}/xem-phim/${episodeId}.html`
       }
       

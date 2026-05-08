@@ -23,20 +23,20 @@ function createWindow() {
       nodeIntegration: true,
       contextIsolation: false,
       webSecurity: false, // Required for some streams (CORS bypass)
-      webviewTag: true
+      webviewTag: true,
+      autoplayPolicy: 'no-user-gesture-required'
     }
   })
 
   // Set up interceptors if needed
-  if (streamInfo.headers) {
+  if (streamInfo.headers && streamInfo.type !== 'iframe') {
     const filter = { urls: ['*://*/*'] }
     session.defaultSession.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
       const headers = { ...details.requestHeaders }
-      if (streamInfo.headers) {
-        for (const [k, v] of Object.entries(streamInfo.headers)) {
-          headers[k] = v
-        }
-      }
+      // Only apply headers for direct video streams (HLS/MP4).
+      // Applying them globally for iframes breaks the internal APIs of video hosts.
+      if (streamInfo.headers.Referer) headers['Referer'] = streamInfo.headers.Referer
+      if (streamInfo.headers.Origin) headers['Origin'] = streamInfo.headers.Origin
       callback({ requestHeaders: headers })
     })
   }

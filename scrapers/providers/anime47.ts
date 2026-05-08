@@ -370,7 +370,7 @@ export class Anime47Provider extends BaseScraper {
         id: String(href.match(/ep-\d+-(\d+)/i)?.[1] || `${animeId}-ep-${number}`),
         animeId,
         number,
-        title: `Tập ${number}`,
+        title: $(el).text().trim() || `Tập ${number}`,
         source: 'anime47',
         href
       } as Episode & { href?: string })
@@ -632,7 +632,7 @@ export class Anime47Provider extends BaseScraper {
             id: String(ep?.id || link.match(/ep-\d+-(\d+)/i)?.[1] || `${animeId}-ep-${number}`),
             animeId,
             number,
-            title: `Tập ${number}`,
+            title: String(ep?.title || `Tập ${number}`),
             source: 'anime47',
             href: link
           } as Episode & { href?: string })

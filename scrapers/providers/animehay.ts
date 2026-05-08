@@ -246,9 +246,21 @@ export class AnimehayProvider extends BaseScraper {
       }
     }
 
-    // Rank results: exact title matches first
+    // Filter out results that have no word overlap to prevent fallback pages
     const lq = q.toLowerCase()
-    return results
+    const lqWords = lq.split(' ').filter(w => w.length > 1)
+    
+    const filtered = results.filter(item => {
+      const t = item.title.toLowerCase()
+      if (t.includes(lq)) return true
+      for (const w of lqWords) {
+        if (t.includes(w)) return true
+      }
+      return false
+    })
+
+    // Rank results: exact title matches first
+    return filtered
       .sort((a, b) => {
         const aHit = a.title.toLowerCase().includes(lq) ? 1 : 0
         const bHit = b.title.toLowerCase().includes(lq) ? 1 : 0
