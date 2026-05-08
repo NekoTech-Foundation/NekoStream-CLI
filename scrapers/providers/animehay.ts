@@ -225,9 +225,11 @@ export class AnimehayProvider extends BaseScraper {
     const q = query.trim()
     if (!q) return []
 
+    // Animehay uses slugs for search: /tim-kiem/keyword-with-dashes.html
+    const slug = q.trim().replace(/\s+/g, '-')
     const urls = [
-      `${this.baseUrl}/tim-kiem/?keyword=${encodeURIComponent(q)}`,
-      `${this.baseUrl}/tim-kiem?s=${encodeURIComponent(q)}`,
+      `${this.baseUrl}/tim-kiem/${encodeURIComponent(slug)}.html`,
+      `${this.baseUrl}/tim-kiem/${slug}.html`, // Sometimes encodeURIComponent breaks Vietnamese accents on their backend
     ]
 
     const seen = new Set<string>()
@@ -252,9 +254,11 @@ export class AnimehayProvider extends BaseScraper {
     
     const filtered = results.filter(item => {
       const t = item.title.toLowerCase()
-      if (t.includes(lq)) return true
+      const tAlt = (item.titleAlt || '').toLowerCase()
+      if (t.includes(lq) || tAlt.includes(lq)) return true
+      
       for (const w of lqWords) {
-        if (t.includes(w)) return true
+        if (t.includes(w) || tAlt.includes(w)) return true
       }
       return false
     })

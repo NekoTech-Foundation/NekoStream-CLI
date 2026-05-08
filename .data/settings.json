@@ -1,5 +1,8 @@
 {
-  "defaultProvider": "animehay",
+  "defaultProvider": "animevietsub",
   "defaultQuality": "1080p",
-  "autoPlayNext": false
+  "autoPlayNext": false,
+  "providerDomains": {
+    "animehay": "https://animehay02.site"
+  }
 }

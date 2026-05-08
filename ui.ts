@@ -2,7 +2,14 @@ import chalk from 'chalk'
 import type { AnimeDetail } from './scrapers/base'
 
 export function clearScreen() {
-  process.stdout.write('\x1Bc')
+  process.stdout.write('\x1B[2J\x1B[H')
+  if (process.stdin.isTTY) {
+    try {
+      // Force Node.js to re-apply the OS console mode API (fixes Playwright/Chromium corrupting the console on Windows)
+      process.stdin.setRawMode(false)
+      process.stdin.setRawMode(true)
+    } catch (e) {}
+  }
 }
 
 function interpolateColor(c1: number[], c2: number[], factor: number) {

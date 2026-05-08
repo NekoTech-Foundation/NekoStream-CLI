@@ -292,7 +292,7 @@ export class AnimeVietsubProvider extends BaseScraper {
         console.log(`[Scraper] Injecting ${playwrightCookies.length} cookies into Playwright (cf_clearance: ${cfCookie ? '✅' : '❌ missing'})`)
       } else {
         console.warn('[Scraper] No Electron session cookies found — CF challenge may not resolve')
-        console.warn('[Scraper] Tip: visit animevietsub.bz in the app browser to set cf_clearance')
+        console.warn('[Scraper] Tip: visit  in the app browser to set cf_clearance')
       }
     } catch (err) {
       console.warn('[Scraper] Could not read Electron session cookies:', err)
@@ -397,6 +397,10 @@ export class AnimeVietsubProvider extends BaseScraper {
       await page.close().catch(() => {})
       await context.close().catch(() => {})
       await browser.close().catch(() => {})
+      // FIX: Wait for Chromium process to fully terminate in the OS.
+      // Chromium restores the Windows console mode when it exits. 
+      // If we don't wait, it might overwrite the console mode AFTER prompts has started!
+      await new Promise(r => setTimeout(r, 500))
     }
   }
 

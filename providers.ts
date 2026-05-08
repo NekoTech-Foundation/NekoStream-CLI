@@ -10,9 +10,25 @@ export const providers: Record<string, BaseScraper> = {
 }
 
 export function getProvider(name: string): BaseScraper {
-  const provider = providers[name.toLowerCase()]
+  const providerName = name.toLowerCase()
+  const provider = providers[providerName]
   if (!provider) {
     throw new Error(`Provider not found: ${name}`)
   }
+
+  // Inject custom domain if configured
+  try {
+    const { loadSettings } = require('./storage')
+    const settings = loadSettings()
+    if (settings.providerDomains && settings.providerDomains[providerName]) {
+      let customDomain = settings.providerDomains[providerName]
+      if (!customDomain.startsWith('http')) customDomain = 'https://' + customDomain
+      // Remove trailing slash
+      provider.baseUrl = customDomain.replace(/\/$/, '')
+    }
+  } catch (e) {
+    // Ignore storage errors here to avoid breaking provider resolution
+  }
+
   return provider
 }

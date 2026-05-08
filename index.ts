@@ -1,4 +1,4 @@
-import prompts from 'prompts'
+import prompts from './prompts-wrapper'
 import chalk from 'chalk'
 import ora from 'ora'
 import { providers, getProvider } from './providers'
@@ -26,6 +26,7 @@ async function showSettingsMenu() {
         { title: `Default Provider: ${chalk.green(settings.defaultProvider)}`, value: 'provider' },
         { title: `Default Quality: ${chalk.green(settings.defaultQuality)}`, value: 'quality' },
         { title: `Auto-Play Next Episode: ${settings.autoPlayNext ? chalk.green('ON') : chalk.red('OFF')}`, value: 'autoplay' },
+        { title: `Configure Provider Domains`, value: 'domains' },
         { title: chalk.gray('Back to Home'), value: 'back' }
       ]
     })
@@ -37,7 +38,7 @@ async function showSettingsMenu() {
         type: 'select',
         name: 'newProvider',
         message: 'Select Default Provider',
-        choices: Object.keys(providers).map(name => ({ title: name, value: name }))
+        choices: Object.keys(providers).map((name, idx) => ({ title: `[${idx + 1}] ${name}`, value: name }))
       })
       if (newProvider) saveSettings({ defaultProvider: newProvider })
     }
@@ -47,13 +48,69 @@ async function showSettingsMenu() {
         type: 'select',
         name: 'newQuality',
         message: 'Select Default Quality',
-        choices: ['1080p', '720p', '480p', 'auto'].map(q => ({ title: q, value: q }))
+        choices: ['1080p', '720p', '480p', 'auto'].map((q, idx) => ({ title: `[${idx + 1}] ${q}`, value: q }))
       })
       if (newQuality) saveSettings({ defaultQuality: newQuality })
     }
 
     if (action === 'autoplay') {
       saveSettings({ autoPlayNext: !settings.autoPlayNext })
+    }
+
+    if (action === 'domains') {
+      while (true) {
+        clearScreen()
+        printBanner('Provider Domains', 'Set custom domains to bypass blocks')
+        
+        const currentDomains = loadSettings().providerDomains || {}
+        
+        const domainChoices = Object.keys(providers).map((name, idx) => {
+          const defaultDomain = providers[name].baseUrl
+          const currentDomain = currentDomains[name] || defaultDomain
+          const isCustom = !!currentDomains[name]
+          
+          return {
+            title: `[${idx + 1}] ${chalk.bold(name)}: ${isCustom ? chalk.green(currentDomain) : chalk.gray(currentDomain)}`,
+            value: name
+          }
+        })
+        
+        domainChoices.push({ title: chalk.red('Reset All to Default'), value: 'reset' } as any)
+        domainChoices.push({ title: chalk.gray('Back to Settings'), value: 'back' } as any)
+
+        const { selectedProvider } = await prompts({
+          type: 'select',
+          name: 'selectedProvider',
+          message: 'Select a provider to configure (Press Esc to go back)',
+          choices: domainChoices
+        })
+
+        if (!selectedProvider || selectedProvider === 'back') break
+
+        if (selectedProvider === 'reset') {
+          saveSettings({ providerDomains: {} })
+          console.log(chalk.green('All domains reset to default.'))
+          await sleep(1000)
+          continue
+        }
+
+        const { newDomain } = await prompts({
+          type: 'text',
+          name: 'newDomain',
+          message: `Enter new domain for ${selectedProvider} (e.g. animevietsub.tv) - Leave empty to reset:`,
+          initial: currentDomains[selectedProvider] || ''
+        })
+
+        if (newDomain !== undefined) {
+          const newDomains = { ...loadSettings().providerDomains }
+          if (newDomain.trim() === '') {
+            delete newDomains[selectedProvider]
+          } else {
+            newDomains[selectedProvider] = newDomain.trim()
+          }
+          saveSettings({ providerDomains: newDomains })
+        }
+      }
     }
   }
 }
@@ -72,7 +129,7 @@ async function showHistoryMenu() {
     }
 
     const choices = history.map((item, index) => ({
-      title: `${chalk.magenta(item.provider)} | ${chalk.bold.white(item.animeTitle)} - ${chalk.cyan(item.episodeTitle)}`,
+      title: `[${index + 1}] ${chalk.magenta(item.provider)} | ${chalk.bold.white(item.animeTitle)} - ${chalk.cyan(item.episodeTitle)}`,
       description: `Watched on: ${new Date(item.timestamp).toLocaleString()}`,
       value: index
     }))
@@ -113,15 +170,26 @@ async function showAnimeList(providerName: string, title: string, list: AnimeSea
     clearScreen()
     printBanner(`Provider: ${providerName.toUpperCase()}`, title.toUpperCase())
     
+    // Fix for prompts Windows bug: Flush any leftover escape sequences or buffered keys 
+    // that might corrupt the next prompt's raw mode and cause the ^[[B bug.
+    if (process.stdin.isTTY) {
+      process.stdin.resume()
+      while (process.stdin.read() !== null) {}
+    }
+
     const { animeId } = await prompts({
       type: 'select',
       name: 'animeId',
       message: 'Select an Anime (Press Esc to go back)',
-      choices: list.map(anime => ({
-        title: anime.title,
-        description: anime.status || anime.year?.toString() || '',
-        value: anime.id
-      }))
+      choices: list.map((anime, idx) => {
+        const desc = anime.status || anime.year?.toString() || ''
+        const cleanTitle = anime.title.replace(/\r?\n|\r/g, ' ').trim()
+        const cleanDesc = desc.replace(/\r?\n|\r/g, ' ').trim()
+        return {
+          title: `[${idx + 1}] ${cleanTitle}${cleanDesc ? ` - ${cleanDesc}` : ''}`,
+          value: anime.id
+        }
+      })
     })
 
     if (!animeId) break
@@ -172,14 +240,22 @@ async function openAnimeMenu(providerName: string, animeId: string) {
     printBanner(`Provider: ${providerName.toUpperCase()}`, selectedAnime ? selectedAnime.title : animeId)
     if (selectedAnime) drawAnimeCard(selectedAnime)
 
+    if (process.stdin.isTTY) {
+      process.stdin.resume()
+      while (process.stdin.read() !== null) {}
+    }
+
     const { episode } = await prompts({
       type: 'select',
       name: 'episode',
       message: 'Select an Episode (Press Esc to go back)',
-      choices: episodes.map(ep => ({
-        title: ep.title || `Episode ${ep.number}`,
-        value: ep
-      }))
+      choices: episodes.map((ep, idx) => {
+        const cleanTitle = (ep.title || `Episode ${ep.number}`).replace(/\r?\n|\r/g, ' ').trim()
+        return {
+          title: `[${idx + 1}] ${cleanTitle}`,
+          value: ep
+        }
+      })
     })
 
     if (!episode) break
@@ -213,8 +289,8 @@ async function openAnimeMenu(providerName: string, animeId: string) {
         type: 'select',
         name: 'server',
         message: 'Select a Server (Press Esc to go back)',
-        choices: servers.map(s => ({
-          title: `${s.name} [${s.quality || 'Auto'}] (${s.type})`,
+        choices: servers.map((s, idx) => ({
+          title: `[${idx + 1}] ${s.name} [${s.quality || 'Auto'}] (${s.type})`,
           value: s
         }))
       })
