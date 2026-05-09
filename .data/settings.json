@@ -3,6 +3,7 @@
   "defaultQuality": "1080p",
   "autoPlayNext": false,
   "providerDomains": {
-    "animehay": "https://animehay02.site"
+    "animehay": "https://animehay02.site",
+    "animevietsub": "https://animevietsub.site"
   }
 }
