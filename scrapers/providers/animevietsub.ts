@@ -890,7 +890,11 @@ export class AnimeVietsubProvider extends BaseScraper {
           }
         }
         if (text.includes('Season:')) {
-          seasonInfo = $(el).find('a').attr('title') || $(el).find('a').text().trim()
+          const rawSeason = $(el).find('a').attr('title') || $(el).find('a').text().trim()
+          seasonInfo = rawSeason.replace(/List anime /i, '')
+                                .replace(/\s*Vietsub\s*\|.*/i, '')
+                                .replace(/\s*Vietsub.*/i, '')
+                                .trim()
         }
       })
       
