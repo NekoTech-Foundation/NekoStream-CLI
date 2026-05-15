@@ -26,6 +26,7 @@ export interface Settings {
   defaultProvider: string
   defaultQuality: string
   autoPlayNext: boolean
+  developerMode?: boolean
   providerDomains?: Record<string, string>
 }
 
@@ -33,6 +34,7 @@ const DEFAULT_SETTINGS: Settings = {
   defaultProvider: 'animevietsub',
   defaultQuality: '1080p',
   autoPlayNext: false,
+  developerMode: false,
   providerDomains: {}
 }
 

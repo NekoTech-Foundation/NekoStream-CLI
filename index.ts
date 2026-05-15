@@ -1,3 +1,6 @@
+import fs from 'fs'
+import path from 'path'
+import { execSync } from 'child_process'
 import prompts from './prompts-wrapper'
 import chalk from 'chalk'
 import ora from 'ora'
@@ -32,13 +35,16 @@ async function showSettingsMenu() {
     const { action } = await prompts({
       type: 'select',
       name: 'action',
-      message: 'Settings Menu (Press Esc to go back)',
+      message: 'Cấu hình hệ thống (Esc: Thoát)',
       choices: [
+        { separator: 'CẤU HÌNH' },
         { title: `Default Provider: ${chalk.green(settings.defaultProvider)}`, value: 'provider' },
         { title: `Default Quality: ${chalk.green(settings.defaultQuality)}`, value: 'quality' },
-        { title: `Auto-Play Next Episode: ${settings.autoPlayNext ? chalk.green('ON') : chalk.red('OFF')}`, value: 'autoplay' },
-        { title: `Configure Provider Domains`, value: 'domains' },
-        { title: chalk.gray('Back to Home'), value: 'back' }
+        { title: `Auto-Play Next: ${settings.autoPlayNext ? chalk.green('ON') : chalk.red('OFF')}`, value: 'autoplay' },
+        { title: `Developer Mode (Preserve Logs): ${settings.developerMode ? chalk.green('ON') : chalk.red('OFF')}`, value: 'devmode' },
+        { title: `Configure Domains`, value: 'domains' },
+        { separator: 'TRỞ VỀ' },
+        { title: chalk.gray('🔙 Back to Home'), value: 'back' }
       ]
     })
 
@@ -66,6 +72,10 @@ async function showSettingsMenu() {
 
     if (action === 'autoplay') {
       saveSettings({ autoPlayNext: !settings.autoPlayNext })
+    }
+    
+    if (action === 'devmode') {
+      saveSettings({ developerMode: !settings.developerMode })
     }
 
     if (action === 'domains') {
@@ -139,11 +149,14 @@ async function showHistoryMenu() {
       break
     }
 
-    const choices = history.map((item, index) => ({
-      title: `[${index + 1}] ${chalk.magenta(item.provider)} | ${chalk.bold.white(item.animeTitle)} - ${chalk.cyan(item.episodeTitle)}`,
-      description: `Watched on: ${new Date(item.timestamp).toLocaleString()}`,
-      value: index
-    }))
+    const choices: any[] = [{ separator: 'LỊCH SỬ LOCAL' }]
+    history.forEach((item, index) => {
+      choices.push({
+        title: `[${index + 1}] ${chalk.magenta(item.provider)} | ${chalk.bold.white(item.animeTitle)} - ${chalk.cyan(item.episodeTitle)}`,
+        description: `Watched on: ${new Date(item.timestamp).toLocaleString()}`,
+        value: index
+      })
+    })
 
     choices.push({ title: chalk.red('Clear History'), description: '', value: -2 as any })
     choices.push({ title: chalk.gray('Back to Home'), description: '', value: -1 as any })
@@ -222,7 +235,7 @@ async function openAnimeMenu(providerName: string, animeId: string) {
     epsSpinner.stop()
   } catch (e) {
     epsSpinner.stop()
-    console.log(chalk.red('\nFailed to fetch episodes: ' + e))
+    console.error(chalk.red('\nFailed to fetch episodes:'), e)
     await sleep(2000)
     return
   }
@@ -262,17 +275,20 @@ async function openAnimeMenu(providerName: string, animeId: string) {
       while (process.stdin.read() !== null) {}
     }
 
+    const episodeChoices: any[] = [{ separator: 'DANH SÁCH TẬP' }]
+    episodes.forEach((ep, idx) => {
+      const cleanTitle = (ep.title || `Episode ${ep.number}`).replace(/\r?\n|\r/g, ' ').trim()
+      episodeChoices.push({
+        title: `[${idx + 1}] ▶️ ${cleanTitle}`,
+        value: ep
+      })
+    })
+
     const { episode } = await prompts({
       type: 'select',
       name: 'episode',
-      message: 'Select an Episode (Press Esc to go back)',
-      choices: episodes.map((ep, idx) => {
-        const cleanTitle = (ep.title || `Episode ${ep.number}`).replace(/\r?\n|\r/g, ' ').trim()
-        return {
-          title: `[${idx + 1}] ${cleanTitle}`,
-          value: ep
-        }
-      })
+      message: 'Select an Episode (Esc: Thoát)',
+      choices: episodeChoices
     })
 
     if (!episode) break
@@ -291,7 +307,7 @@ async function openAnimeMenu(providerName: string, animeId: string) {
         serversSpinner.stop()
       } catch (e) {
         serversSpinner.stop()
-        console.log(chalk.red('\nFailed to fetch servers: ' + e))
+        console.error(chalk.red('\nFailed to fetch servers:'), e)
         await sleep(2000)
         break
       }
@@ -321,7 +337,7 @@ async function openAnimeMenu(providerName: string, animeId: string) {
         streamSpinner.stop()
       } catch (e) {
         streamSpinner.stop()
-        console.log(chalk.red('\nFailed to extract stream: ' + e))
+        console.error(chalk.red('\nFailed to extract stream:'), e)
         await sleep(2000)
         continue
       }
@@ -445,7 +461,7 @@ async function showProviderAccountMenu(provider: 'animevietsub' | 'anime47'): Pr
         console.log(chalk.green(`\n✅ Đăng nhập thành công!`))
         if (result.userDisplayName) console.log(chalk.cyan(`   Xin chào, ${result.userDisplayName}!`))
       } catch (e) {
-        console.log(chalk.red(`\n❌ Đăng nhập thất bại: ${e}`))
+        console.error(chalk.red(`\n❌ Đăng nhập thất bại:`), e)
       }
       await sleep(2000)
       continue
@@ -503,7 +519,7 @@ async function showProviderAccountMenu(provider: 'animevietsub' | 'anime47'): Pr
       }
     } catch (e) {
       spinner.stop()
-      console.log(chalk.red(`\n❌ Lỗi: ${e}`))
+      console.error(chalk.red(`\n❌ Lỗi:`), e)
       await sleep(2000)
     }
   }
@@ -540,28 +556,120 @@ async function showAccountMenu(): Promise<void> {
   }
 }
 
+async function checkUpdate() {
+  try {
+    const isCompiled = __dirname.endsWith('dist') || __dirname.endsWith('dist\\') || __dirname.endsWith('dist/')
+    const basePath = isCompiled ? path.join(__dirname, '..') : __dirname
+    const pkg = JSON.parse(fs.readFileSync(path.join(basePath, 'package.json'), 'utf-8'))
+    const currentVersion = pkg.version
+
+    const res = await fetch('https://registry.npmjs.org/nekostream-cli/latest', { signal: AbortSignal.timeout(2000) })
+    const data = await res.json()
+    const latestVersion = data.version
+
+    if (latestVersion && latestVersion !== currentVersion) {
+      clearScreen()
+      console.log(chalk.yellow('╭─────────────────────────────────────────────────────────────╮'))
+      console.log(chalk.yellow('│                                                             │'))
+      console.log(chalk.yellow(`│  🚀 CÓ PHIÊN BẢN MỚI! ${chalk.red(currentVersion)} → ${chalk.green(latestVersion)}                  │`))
+      console.log(chalk.yellow('│  Bắt buộc phải cập nhật để tiếp tục sử dụng ứng dụng.       │'))
+      console.log(chalk.yellow('│                                                             │'))
+      console.log(chalk.yellow('╰─────────────────────────────────────────────────────────────╯\n'))
+      
+      const { update } = await prompts({
+        type: 'confirm',
+        name: 'update',
+        message: 'Bạn có muốn tự động cập nhật ngay bây giờ?',
+        initial: true
+      })
+
+      if (update) {
+        const spinner = ora('Đang cập nhật (npm i -g nekostream-cli@latest)...').start()
+        try {
+          execSync('npm i -g nekostream-cli@latest', { stdio: 'ignore' })
+          spinner.succeed(chalk.green('Đã cập nhật thành công! Vui lòng chạy lại lệnh để sử dụng bản mới.'))
+        } catch (e) {
+          spinner.fail(chalk.red('Cập nhật thất bại. Vui lòng chạy thủ công: npm i -g nekostream-cli@latest'))
+        }
+        process.exit(0)
+      } else {
+        console.log(chalk.red('\nVui lòng chạy `npm i -g nekostream-cli@latest` để cập nhật thủ công.'))
+        process.exit(0)
+      }
+    }
+  } catch (e) {
+    // Ignore network/fetch errors to not block startup
+  }
+}
+
 async function main() {
+  await checkUpdate()
+
   let settings = loadSettings()
   let currentProviderName = settings.defaultProvider
 
   while (true) {
     clearScreen()
+
+    const authStatus = await getAuthStatus(currentProviderName as any)
+    const usernameDisplay = authStatus.loggedIn 
+      ? chalk.green(`${authStatus.userDisplayName || 'Đã đăng nhập'} (${authStatus.cookieCount || 0} cookies)`)
+      : chalk.red('Chưa đăng nhập')
+
     printBanner(`Provider: ${currentProviderName.toUpperCase()}`, 'Home Dashboard')
+    console.log(chalk.cyan('NekoStream Dashboard | Hôm nay xem gì?'))
+    console.log(`Account: ${usernameDisplay}\n`)
+
+    const dynamicChoices: any[] = [
+      { separator: 'KHÁM PHÁ' },
+      { title: 'Search Anime', value: 'search' },
+      { title: 'Trending Now', value: 'trending' },
+      { title: 'Recently Added', value: 'latest' }
+    ]
+
+    const usernameStr = authStatus.loggedIn ? (authStatus.userDisplayName || 'MEMBER') : 'KHÁCH'
+    dynamicChoices.push({ separator: `TÀI KHOẢN : ${usernameStr.toUpperCase()}` })
+
+    if (currentProviderName === 'anime47') {
+      if (authStatus.loggedIn) {
+        dynamicChoices.push(
+          { title: 'Hộp phim / Yêu thích', value: 'favorites' },
+          { title: 'Lịch sử xem', value: 'history_provider' },
+          { title: 'Đang xem', value: 'watching' },
+          { title: 'Hoàn thành', value: 'completed' },
+          { title: 'Dự định xem', value: 'plan_to_watch' },
+          { title: 'Thông báo', value: 'notifications' },
+          { title: chalk.yellow('Đăng xuất'), value: 'logout' }
+        )
+      } else {
+        dynamicChoices.push({ title: chalk.green('Đăng nhập Anime47'), value: 'login' })
+      }
+    } else if (currentProviderName === 'animevietsub') {
+      if (authStatus.loggedIn) {
+        dynamicChoices.push(
+          { title: 'Hộp phim', value: 'favorites' },
+          { title: 'Lịch sử', value: 'history_provider' },
+          { title: 'Thông báo', value: 'notifications' },
+          { title: chalk.yellow('Đăng xuất'), value: 'logout' }
+        )
+      } else {
+        dynamicChoices.push({ title: chalk.green('Đăng nhập AnimeVietsub'), value: 'login' })
+      }
+    }
+
+    dynamicChoices.push(
+      { separator: 'HỆ THỐNG' },
+      { title: 'Tiếp tục xem (Lịch sử Local)', value: 'history' },
+      { title: 'Cài đặt hệ thống', value: 'settings' },
+      { title: 'Đổi Provider', value: 'change_provider' },
+      { title: chalk.red('Thoát ứng dụng'), value: 'exit' }
+    )
 
     const { action } = await prompts({
       type: 'select',
       name: 'action',
       message: 'Home Dashboard (Press Esc to Exit)',
-      choices: [
-        { title: 'Search Anime', value: 'search' },
-        { title: 'Trending Now', value: 'trending' },
-        { title: 'Recently Added', value: 'latest' },
-        { title: 'Continue Watching (History)', value: 'history' },
-        { title: '👤 Account', value: 'account' },
-        { title: 'Settings', value: 'settings' },
-        { title: 'Change Provider', value: 'change_provider' },
-        { title: chalk.red('Exit'), value: 'exit' }
-      ]
+      choices: dynamicChoices
     })
 
     if (!action || action === 'exit') {
@@ -572,6 +680,65 @@ async function main() {
 
     const provider = getProvider(currentProviderName)
 
+    if (action === 'login') {
+      if (currentProviderName === 'anime47') await loginAnime47Interactive()
+      else if (currentProviderName === 'animevietsub') await loginAnimeVietsubInteractive()
+      continue
+    }
+
+    if (action === 'logout') {
+      logoutProvider(currentProviderName as any)
+      console.log(chalk.yellow(`\n👋 Đã đăng xuất.`))
+      await sleep(1500)
+      continue
+    }
+
+    if (['favorites', 'history_provider', 'watching', 'completed', 'plan_to_watch', 'notifications'].includes(action)) {
+      const spinner = ora(`Đang tải dữ liệu từ ${currentProviderName}...`).start()
+      try {
+        if (currentProviderName === 'animevietsub') {
+          if (action === 'notifications') {
+            const res = await fetchAnimeVietsubNotifications()
+            spinner.stop()
+            await showUserDataList('Thông báo', res.items, currentProviderName)
+          } else {
+            const listType = action === 'history_provider' ? 'history' : action
+            const res = await fetchAllAnimeVietsubList(listType as 'favorites' | 'history')
+            spinner.stop()
+            if (!res.success) {
+              console.log(chalk.red(`\n❌ ${res.error}`))
+              await sleep(2000)
+            } else {
+              await showUserDataList(listType === 'history' ? 'Lịch sử' : 'Hộp phim', res.items, currentProviderName)
+            }
+          }
+        } else if (currentProviderName === 'anime47') {
+          if (action === 'notifications') {
+            const res = await fetchAnime47Notifications()
+            spinner.stop()
+            await showUserDataList('Thông báo', res.notifications?.map(n => ({
+              animeId: n.animeId || '', title: n.title, url: n.url, thumbnail: n.thumbnail
+            })) || [], currentProviderName)
+          } else {
+            const listType = action === 'history_provider' ? 'history' : action
+            const res = await fetchAllAnime47List(listType as any)
+            spinner.stop()
+            if (!res.success) {
+              console.log(chalk.red(`\n❌ ${res.error}`))
+              await sleep(2000)
+            } else {
+              const titleMap: any = { favorites: 'Yêu thích', history: 'Lịch sử xem', watching: 'Đang xem', completed: 'Hoàn thành', plan_to_watch: 'Dự định xem' }
+              await showUserDataList(titleMap[listType] || listType, res.items, currentProviderName)
+            }
+          }
+        }
+      } catch (e) {
+        spinner.stop()
+        console.error(chalk.red(`\nLỗi:`), e)
+        await sleep(2000)
+      }
+      continue
+    }
     if (action === 'search') {
       const { keyword } = await prompts({
         type: 'text',
@@ -592,7 +759,7 @@ async function main() {
         await showAnimeList(currentProviderName, `Search Results: ${keyword}`, results)
       } catch (e) {
         searchSpinner.stop()
-        console.log(chalk.red('\nSearch failed: ' + e))
+        console.error(chalk.red('\nSearch failed:'), e)
         await sleep(2000)
       }
     }
@@ -610,7 +777,7 @@ async function main() {
         await showAnimeList(currentProviderName, action === 'trending' ? '🔥 Trending Now' : '🆕 Recently Added', results)
       } catch (e) {
         spinner.stop()
-        console.log(chalk.red(`\nFailed to fetch ${action} anime: ` + e))
+        console.error(chalk.red(`\nFailed to fetch ${action} anime:`), e)
         await sleep(2000)
       }
     }
@@ -619,9 +786,7 @@ async function main() {
       await showHistoryMenu()
     }
 
-    if (action === 'account') {
-      await showAccountMenu()
-    }
+    // Account logic has been moved to main menu
 
     if (action === 'settings') {
       await showSettingsMenu()

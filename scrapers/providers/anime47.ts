@@ -368,6 +368,7 @@ export class Anime47Provider extends BaseScraper {
       cleanText = cleanText.replace(/^\d{1,2}(?=[A-Z])/i, '')
 
       const title =
+        $a.find('.anime-title').first().text().trim() ||
         $a.attr('title')?.trim() ||
         $root.find('h1, h2, h3, .title, .name, .text-subtitle1, .text-subtitle2').first().text().trim() ||
         $img.attr('alt')?.trim() ||
@@ -403,21 +404,62 @@ export class Anime47Provider extends BaseScraper {
   private parseEpisodeLinksFromHtml(html: string, animeId: string): Episode[] {
     const $ = this.parseHtml(html)
     const episodes: Episode[] = []
-    $('a[href*="/xem/"][href*="/ep-"]').each((_, el) => {
+    
+    // Quasar apps might use different classes, we look for typical episode link patterns
+    const selectors = [
+      'a[href*="/xem/"][href*="/ep-"]',
+      'a[href*="/xem/"][href*="/tap-"]',
+      '.episodes-list a',
+      '.server-episodes a',
+      'a.q-btn[href*="/xem/"]'
+    ].join(', ')
+
+    $(selectors).each((_, el) => {
+      const rawText = $(el).text().trim()
+      if (/xem ngay/i.test(rawText) || /play_arrow/i.test(rawText) || rawText === '') return
+
       const href = this.absolutizeUrl($(el).attr('href') || '')
-      let number = Number(href.match(/\/ep-(\d+)-/i)?.[1] || $(el).text().match(/(\d+)/)?.[1] || 0)
+      let number = Number(href.match(/\/(?:ep|tap)-(\d+)/i)?.[1] || rawText.match(/(\d+)/)?.[1] || 0)
       if (!number || isNaN(number)) {
         number = episodes.length > 0 ? Math.max(...episodes.map(e => e.number)) + 1 : 1
       }
+      
+      const epId = String(href.match(/(?:ep|tap)-\d+-(\d+)/i)?.[1] || `${animeId}-ep-${number}`)
+      
       episodes.push({
-        id: String(href.match(/ep-\d+-(\d+)/i)?.[1] || `${animeId}-ep-${number}`),
+        id: epId,
         animeId,
         number,
-        title: $(el).text().trim() || `Tập ${number}`,
+        title: rawText || `Tập ${number}`,
         source: 'anime47',
         href
       } as Episode & { href?: string })
     })
+
+    // If still no episodes, try to find them by looking at ALL links that might be episodes
+    if (episodes.length === 0) {
+      $('a').each((_, el) => {
+        const href = $(el).attr('href') || ''
+        if (href.includes('/xem/') && (href.match(/\/(?:ep|tap)-\d+/i) || href.match(/-\d+$/))) {
+          const rawText = $(el).text().trim()
+          if (/xem ngay/i.test(rawText) || /play_arrow/i.test(rawText) || rawText === '') return
+          
+          let number = Number(href.match(/\/(?:ep|tap)-(\d+)/i)?.[1] || rawText.match(/(\d+)/)?.[1] || 0)
+          if (!number || isNaN(number)) {
+            number = episodes.length > 0 ? Math.max(...episodes.map(e => e.number)) + 1 : 1
+          }
+          episodes.push({
+            id: String(href.match(/(?:ep|tap)-\d+-(\d+)/i)?.[1] || `${animeId}-ep-${number}`),
+            animeId,
+            number,
+            title: rawText || `Tập ${number}`,
+            source: 'anime47',
+            href: this.absolutizeUrl(href)
+          } as Episode & { href?: string })
+        }
+      })
+    }
+
     return episodes
   }
 
@@ -644,62 +686,93 @@ export class Anime47Provider extends BaseScraper {
       const mMatch = animeId.match(/-m(\d+)$/i) || animeId.match(/^m?(\d+)$/i)
       const numericId = mMatch ? mMatch[1] : animeId
       const apiUrl = `${this.apiBase}/anime/${numericId}/episodes?lang=vi`
-      console.log(`[Anime47] getEpisodes: ${animeId} → numericId=${numericId}`)
+      let data: any = null
       try {
         const response = await fetch(apiUrl, { 
           headers: this.jsonHeaders,
           signal: AbortSignal.timeout(10000)
         })
-        if (response.ok) {
-          const data = await response.json() as any
-          const episodes: Episode[] = []
-          
-          // Parse teams -> groups -> episodes structure
-          if (Array.isArray(data?.teams)) {
-            for (const team of data.teams) {
-              if (Array.isArray(team.groups)) {
-                for (const group of team.groups) {
-                  if (Array.isArray(group.episodes)) {
-                    for (const ep of group.episodes) {
-                      let number = Number(ep.number || ep.episodeNumber || 0)
-                      const link = String(ep.link || '')
-                      if (!number || isNaN(number)) {
-                        number = episodes.length > 0 ? Math.max(...episodes.map(e => e.number)) + 1 : 1
-                      }
-                      if (link) {
-                        episodes.push({
-                          id: String(ep.id || link.match(/ep-\d+-(\d+)/i)?.[1] || `${animeId}-ep-${number}`),
-                          animeId,
-                          number,
-                          title: String(ep.title || `Tập ${number}`),
-                          source: 'anime47',
-                          href: this.absolutizeUrl(link)
-                        } as Episode & { href?: string })
-                      }
+        if (response.ok || response.status === 401 || response.status === 403) {
+          data = await response.json()
+        }
+      } catch (e) {}
+
+      if (!data) {
+        console.log('[Anime47] Native API fetch failed/blocked, falling back to Playwright...')
+        try {
+          const pwHtml = await this.fetchHtml(apiUrl, { retries: 0 })
+          const jsonMatch = pwHtml.match(/\{[\s\S]*\}/)
+          if (jsonMatch) data = JSON.parse(jsonMatch[0])
+        } catch (e) {}
+      }
+
+      if (data) {
+        if (data.success === false && (data.code === 'PRIVATE_MODE' || /đăng nhập/i.test(data.message))) {
+          throw new Error(`Anime47 session expired or Private Mode enabled. Please re-login to Anime47 in Settings! (${data.message})`)
+        }
+        const episodes: Episode[] = []
+        
+        // Parse teams -> groups -> episodes structure
+        if (Array.isArray(data.teams)) {
+          for (const team of data.teams) {
+            if (Array.isArray(team.groups)) {
+              for (const group of team.groups) {
+                if (Array.isArray(group.episodes)) {
+                  for (const ep of group.episodes) {
+                    let number = Number(ep.number || ep.episodeNumber || 0)
+                    const link = String(ep.link || '')
+                    if (!number || isNaN(number)) {
+                      number = episodes.length > 0 ? Math.max(...episodes.map(e => e.number)) + 1 : 1
+                    }
+                    if (link) {
+                      episodes.push({
+                        id: String(ep.id || link.match(/ep-\d+-(\d+)/i)?.[1] || `${animeId}-ep-${number}`),
+                        animeId,
+                        number,
+                        title: String(ep.title || `Tập ${number}`),
+                        source: 'anime47',
+                        href: this.absolutizeUrl(link)
+                      } as Episode & { href?: string })
                     }
                   }
                 }
               }
             }
           }
-          
-          if (episodes.length > 0) {
-            const dedupByNumber = new Map<number, Episode>()
-            for (const ep of episodes) if (!dedupByNumber.has(ep.number)) dedupByNumber.set(ep.number, ep)
-            const result = Array.from(dedupByNumber.values()).sort((a, b) => a.number - b.number)
-            try {
-              cacheHooks.cacheEpisodes?.(animeId, result.map((episode) => ({
-                id: episode.id,
-                number: episode.number,
-                title: episode.title,
-                thumbnail: episode.thumbnail
-              })))
-            } catch {}
-            return result
-          }
         }
-      } catch (apiError) {
-        console.warn('[Anime47] Episodes API failed, falling back to HTML parsing:', apiError)
+        // Fallback for simple data array format
+        else if (Array.isArray(data.data) && typeof data.data[0] === 'object') {
+           for (const ep of data.data) {
+              let number = Number(ep.name || ep.number || ep.episodeNumber || 0)
+              if (!number || isNaN(number)) {
+                number = episodes.length > 0 ? Math.max(...episodes.map(e => e.number)) + 1 : 1
+              }
+              episodes.push({
+                id: String(ep.id || `${animeId}-ep-${number}`),
+                animeId,
+                number,
+                title: String(`Tập ${number}`),
+                source: 'anime47',
+                href: this.absolutizeUrl(`/xem/${animeId}/ep-${number}-${ep.id}`)
+              })
+           }
+        }
+        
+        if (episodes.length > 0) {
+          const dedupByNumber = new Map<number, Episode>()
+          for (const ep of episodes) if (!dedupByNumber.has(ep.number)) dedupByNumber.set(ep.number, ep)
+          const result = Array.from(dedupByNumber.values()).sort((a, b) => a.number - b.number)
+          try {
+            cacheHooks.cacheEpisodes?.(animeId, result.map((episode) => ({
+              id: episode.id,
+              number: episode.number,
+              title: episode.title,
+              thumbnail: episode.thumbnail
+            })))
+          } catch {}
+          return result
+        }
+        console.warn('[Anime47] Episodes API yielded no results')
       }
 
       // Fallback: HTML parsing
@@ -727,10 +800,42 @@ export class Anime47Provider extends BaseScraper {
         })
       }
 
-      if (episodes.length < 8 && detailData?.watchUrl) {
+      let watchUrl = detailData?.watchUrl
+      if (!watchUrl) {
+        const $ = this.parseHtml(html)
+        watchUrl = $('a[href*="/xem/"][href*="/ep-"]').first().attr('href')
+      }
+
+      if (episodes.length < 8 && watchUrl) {
         try {
-          const watchHtml = await this.fetchHtml(this.absolutizeUrl(String(detailData.watchUrl)), { retries: 1 })
-          episodes.push(...this.parseEpisodeLinksFromHtml(watchHtml, animeId))
+          const watchHtml = await this.fetchHtml(this.absolutizeUrl(String(watchUrl)), { retries: 1 })
+          
+          // First try to parse ld+json TVEpisode which Anime47 now uses
+          const $w = this.parseHtml(watchHtml)
+          $w('script[type="application/ld+json"]').each((_, el) => {
+            try {
+              const data = JSON.parse($w(el).html() || '[]')
+              const arr = Array.isArray(data) ? data : [data]
+              arr.forEach((item: any) => {
+                if (item['@type'] === 'TVEpisode' || item['@type'] === 'VideoObject' || (item.episodeNumber && item.url)) {
+                  let number = Number(item.episodeNumber || item.name || 0)
+                  if (!number || isNaN(number)) return
+                  episodes.push({
+                    id: String(item.url?.match(/(?:ep|tap)-\d+-(\d+)/i)?.[1] || `${animeId}-ep-${number}`),
+                    animeId,
+                    number,
+                    title: `Tập ${number}`,
+                    source: 'anime47',
+                    href: this.absolutizeUrl(item.url || watchUrl)
+                  })
+                }
+              })
+            } catch {}
+          })
+
+          if (episodes.length < 8) {
+             episodes.push(...this.parseEpisodeLinksFromHtml(watchHtml, animeId))
+          }
         } catch {}
       }
 
@@ -861,4 +966,3 @@ export class Anime47Provider extends BaseScraper {
     }
   }
 }
-

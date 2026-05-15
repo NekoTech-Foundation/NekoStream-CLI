@@ -261,10 +261,12 @@ export async function loginAnimeVietsubInteractive(): Promise<ProviderAuthStatus
     let userAvatarUrl: string | undefined
     try {
       const identity = await page.evaluate(() => {
-        const usernameEl = document.querySelector('.UserInfo, .user-name, .username, [data-username], .LoggedUser')
+        const usernameEl = document.querySelector('.UserInfo, .user-name, .username, [data-username], .LoggedUser, .btn-user, .user-info span, a[href*="thong-tin-tai-khoan"]')
         const avatarEl = document.querySelector('.UserAvatar img, .user-avatar img, .header-user-avatar img')
+        let usernameText = usernameEl?.textContent?.trim() || usernameEl?.getAttribute('data-username') || null
+        if (usernameText && usernameText.includes('Tài khoản')) usernameText = usernameText.replace('Tài khoản', '').trim()
         return {
-          username: usernameEl?.textContent?.trim() || usernameEl?.getAttribute('data-username') || null,
+          username: usernameText,
           avatar: avatarEl?.getAttribute('src') || null
         }
       })
@@ -469,9 +471,33 @@ export async function fetchA47Page(url: string): Promise<string | null> {
       console.log(`[A47] Injected JWT token into localStorage`)
     }
 
+    // Special handling for API endpoints to bypass Cloudflare while sending headers
+    if (url.includes('/api/')) {
+      console.log(`[A47] Fetching API (Playwright Evaluate): ${url}`)
+      // Navigate to origin first to bypass Cloudflare check
+      await page.goto(A47_ORIGIN, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {})
+      const apiResponse = await page.evaluate(async ({ apiUrl, jwt }) => {
+        try {
+          const res = await fetch(apiUrl, {
+            headers: {
+              'Authorization': jwt ? `Bearer ${jwt}` : '',
+              'Accept': 'application/json'
+            }
+          })
+          return await res.text()
+        } catch (e) {
+          return null
+        }
+      }, { apiUrl: url, jwt: token })
+      
+      if (apiResponse) return apiResponse
+    }
+
     // Step 3: Navigate to the target URL with restored auth
     console.log(`[A47] Fetching (Playwright): ${url}`)
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 })
+    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 }).catch(e => {
+      console.log(`[A47] ⚠ page.goto timeout/error, continuing to extract content: ${e.message}`)
+    })
     const finalUrl = page.url()
 
     if (/\/auth\/login|\/login(?!\/)/i.test(finalUrl)) {

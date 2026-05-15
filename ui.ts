@@ -1,8 +1,15 @@
 import chalk from 'chalk'
+import { loadSettings } from './storage'
 import type { AnimeDetail } from './scrapers/base'
 
 export function clearScreen() {
-  process.stdout.write('\x1B[2J\x1B[H')
+  try {
+    const settings = loadSettings();
+    if (settings.developerMode) return;
+  } catch (e) {} // Fallback in case storage isn't ready yet
+
+  // \x1B[2J clears visible screen, \x1B[3J clears scrollback buffer, \x1B[H moves cursor to top left
+  process.stdout.write('\x1B[2J\x1B[3J\x1B[H')
   if (process.stdin.isTTY) {
     try {
       // Force Node.js to re-apply the OS console mode API (fixes Playwright/Chromium corrupting the console on Windows)
@@ -38,31 +45,21 @@ function applyGradient(text: string, startHex: string, endHex: string) {
 }
 
 export function printBanner(title?: string, subtitle?: string) {
-  const bracket = [
-    " ▝▜▄   ",
-    "   ▝▜▄ ",
-    "  ▗▟▀  ",
-    " ▝▀    "
-  ];
-  
-  const color1 = hexToRgb('#4285F4');
-  const color2 = hexToRgb('#DB2777');
-  
-  const coloredBracket = bracket.map((line, i) => {
-    const factor = i / 3;
-    const color = interpolateColor(color1, color2, factor);
-    return chalk.rgb(color[0], color[1], color[2]).bold(line);
-  });
-
   console.log('\n');
-  console.log(`${coloredBracket[0]}  ${chalk.bold.white('NekoStream CLI v1.0.0')}`);
-  console.log(`${coloredBracket[1]}`);
+  
+  // Pink to Purple
+  const iconTop = applyGradient(' ▝▜▄ ', '#FF69B4', '#9b59b6');
+  // Dark Blue to Cyan
+  const iconBottom = applyGradient(' ▗▟▀ ', '#2980b9', '#00bcd4');
+  
+  console.log(`${iconTop} ${chalk.bold.white('NekoStream CLI v1.0.7')}`);
   
   const line2 = title ? title : '';
-  console.log(`${coloredBracket[2]}  ${line2}`);
+  console.log(`${iconBottom} ${chalk.cyan(line2)}`);
   
-  const line3 = subtitle ? `${chalk.gray(subtitle)}` : '';
-  console.log(`${coloredBracket[3]}  ${line3}`);
+  if (subtitle) {
+    console.log(`      ${chalk.gray(subtitle)}`);
+  }
   console.log('');
 }
 
@@ -96,43 +93,49 @@ export function drawAnimeCard(anime: AnimeDetail) {
     return str + ' '.repeat(len - visibleLength)
   }
 
-  console.log(chalk.cyan(' ╭' + '─'.repeat(width) + '╮'))
+  // Use a gradient for the border? Or just magenta/cyan. Let's use a solid color from the theme.
+  const borderColor = chalk.hex('#9b59b6') // Purple border
+  const titleColor = chalk.hex('#FF69B4').bold // Pink title
+  const labelColor = chalk.hex('#00bcd4') // Cyan labels
+  const valueColor = chalk.white
+
+  console.log(borderColor(' ╭' + '─'.repeat(width) + '╮'))
   
   const title = truncate(anime.title, width - 4)
-  console.log(chalk.cyan(' │ ') + pad(chalk.bold.white(title), width - 2) + chalk.cyan(' │'))
+  console.log(borderColor(' │ ') + pad(titleColor(title), width - 2) + borderColor(' │'))
   if (anime.titleAlt) {
-    console.log(chalk.cyan(' │ ') + pad(chalk.gray(truncate(anime.titleAlt, width - 4)), width - 2) + chalk.cyan(' │'))
+    console.log(borderColor(' │ ') + pad(chalk.gray(truncate(anime.titleAlt, width - 4)), width - 2) + borderColor(' │'))
   }
   
-  console.log(chalk.cyan(' ├' + '─'.repeat(width) + '┤'))
+  console.log(borderColor(' ├' + '─'.repeat(width) + '┤'))
 
   const row1 = []
-  row1.push(chalk.green(`Số tập: `) + chalk.white(anime.episodeCount || '??'))
-  row1.push(chalk.green(`Năm SX: `) + chalk.white(anime.year && anime.year > 1900 ? anime.year : '??'))
+  row1.push(labelColor(`Số tập: `) + valueColor(anime.episodeCount || '??'))
+  row1.push(labelColor(`Năm SX: `) + valueColor(anime.year && anime.year > 1900 ? anime.year : '??'))
   
   const genresStr = anime.genres && anime.genres.length > 0 ? anime.genres.slice(0, 2).join(', ') : '??'
-  row1.push(chalk.magenta(`Thể loại: `) + chalk.white(genresStr))
+  row1.push(chalk.hex('#2980b9')(`Thể loại: `) + valueColor(genresStr))
 
-  console.log(chalk.cyan(' │ ') + pad(row1.join(chalk.gray(' | ')), width - 2) + chalk.cyan(' │'))
+  console.log(borderColor(' │ ') + pad(row1.join(chalk.gray(' | ')), width - 2) + borderColor(' │'))
   
   const row2 = []
-  row2.push(chalk.green(`Đạo diễn: `) + chalk.white((anime as any).director || '??'))
-  row2.push(chalk.green(`Studio: `) + chalk.white((anime as any).studio || '??'))
-  row2.push(chalk.green(`Season: `) + chalk.white((anime as any).season || '??'))
+  row2.push(labelColor(`Đạo diễn: `) + valueColor((anime as any).director || '??'))
+  row2.push(labelColor(`Studio: `) + valueColor((anime as any).studio || '??'))
+  row2.push(labelColor(`Season: `) + valueColor((anime as any).season || '??'))
   
-  console.log(chalk.cyan(' │ ') + pad(row2.join(chalk.gray(' | ')), width - 2) + chalk.cyan(' │'))
+  console.log(borderColor(' │ ') + pad(row2.join(chalk.gray(' | ')), width - 2) + borderColor(' │'))
 
   if (anime.description) {
-    console.log(chalk.cyan(' │ ') + pad('', width - 2) + chalk.cyan(' │'))
+    console.log(borderColor(' │ ') + pad('', width - 2) + borderColor(' │'))
     // Clean HTML from description
     const cleanDesc = anime.description.replace(/<[^>]*>?/gm, '')
     const descLines = wrapText(cleanDesc, width - 4)
     for (let i = 0; i < Math.min(descLines.length, 6); i++) {
       let line = descLines[i]
       if (i === 5 && descLines.length > 6) line = truncate(line, width - 7) + '...'
-      console.log(chalk.cyan(' │ ') + pad(chalk.gray(line), width - 2) + chalk.cyan(' │'))
+      console.log(borderColor(' │ ') + pad(chalk.gray(line), width - 2) + borderColor(' │'))
     }
   }
 
-  console.log(chalk.cyan(' ╰' + '─'.repeat(width) + '╯\n'))
+  console.log(borderColor(' ╰' + '─'.repeat(width) + '╯\n'))
 }

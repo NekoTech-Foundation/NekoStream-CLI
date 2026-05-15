@@ -1,5 +1,8 @@
-import { select, input, confirm } from '@inquirer/prompts'
+import { select, input, confirm, Separator } from '@inquirer/prompts'
 import readline from 'readline'
+import chalk from 'chalk'
+
+export { Separator }
 
 export default async function prompts(options: any): Promise<any> {
   const ac = new AbortController()
@@ -19,11 +22,14 @@ export default async function prompts(options: any): Promise<any> {
 
   try {
     if (options.type === 'select') {
-      const choices = options.choices.map((c: any) => ({
-        name: c.title,
-        value: c.value,
-        description: c.description
-      }))
+      const choices = options.choices.map((c: any) => {
+        if (c.separator) return new Separator(chalk.magenta.bold(`\n [ ${c.separator} ]`))
+        return {
+          name: c.title,
+          value: c.value,
+          description: c.description
+        }
+      })
 
       if (options.message.includes('Esc')) {
         options.message = options.message.replace('(Press Esc to go back)', '(Nhấn Esc để quay lại)').trim()
@@ -34,6 +40,7 @@ export default async function prompts(options: any): Promise<any> {
         message: options.message,
         choices: choices,
         pageSize: 15,
+        loop: false,
         theme: {
           helpMode: 'always',
           style: {
