@@ -17,6 +17,29 @@ const COMMON_BUTTONS = [
   { label: 'Tham gia Discord', url: 'https://discord.gg/Y2kq2y26pZ' }
 ]
 
+const imageCache: Record<string, string> = {}
+
+async function fetchAnimeImage(title: string): Promise<string> {
+  const cleanTitle = title.replace(/(vietsub|thuyết minh|tập.*|phần.*)/gi, '').trim()
+  if (imageCache[cleanTitle]) return imageCache[cleanTitle]
+  
+  try {
+    const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(cleanTitle)}&limit=1`, { signal: AbortSignal.timeout(3000) })
+    if (res.ok) {
+      const data = await res.json()
+      if (data.data && data.data.length > 0) {
+        const imageUrl = data.data[0].images?.jpg?.large_image_url || data.data[0].images?.jpg?.image_url
+        if (imageUrl) {
+          imageCache[cleanTitle] = imageUrl
+          return imageUrl
+        }
+      }
+    }
+  } catch (e) {}
+  
+  return 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/15.1.0/72x72/1f4fa.png' // Fallback
+}
+
 export async function initDiscord() {
   const settings = loadSettings()
   if (settings.discordRpcEnabled === false) return
@@ -43,7 +66,7 @@ function refreshPresence() {
   if (isWatching && currentAnime && currentEpisode && currentProvider) {
     setWatchingPresence(currentAnime, currentEpisode, currentProvider)
   } else {
-    setBrowsingPresence(currentDetails, currentProvider, currentFeature)
+    setBrowsingPresence(currentDetails, currentProvider, currentFeature, currentAnime)
   }
 }
 
@@ -57,42 +80,47 @@ function safeSetActivity(activity: RPC.Presence) {
   } catch (e) {}
 }
 
-export function setBrowsingPresence(details?: string, provider?: string, feature?: string) {
+export async function setBrowsingPresence(details?: string, provider?: string, feature?: string, animeTitle?: string) {
   isWatching = false
   currentDetails = details
   currentProvider = provider
   currentFeature = feature
-  currentAnime = undefined
+  currentAnime = animeTitle
   currentEpisode = undefined
   
   if (!startTimestamp) startTimestamp = new Date()
   
   const stateStr = provider ? `${provider.toUpperCase()}${feature ? ` | ${feature}` : ''}` : (feature || 'NekoStream CLI')
+  
+  const largeImageKey = animeTitle ? await fetchAnimeImage(animeTitle) : 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/15.1.0/72x72/1f4fa.png'
+  const largeImageText = animeTitle || 'NekoStream'
 
   safeSetActivity({
     details: details || 'Đang lướt Menu Chính',
     state: stateStr,
     startTimestamp,
-    largeImageKey: 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/15.1.0/72x72/1f4fa.png',
-    largeImageText: 'NekoStream',
+    largeImageKey,
+    largeImageText,
     instance: false,
     buttons: COMMON_BUTTONS
   })
 }
 
-export function setWatchingPresence(animeTitle: string, episodeName: string, provider: string) {
+export async function setWatchingPresence(animeTitle: string, episodeName: string, provider: string) {
   isWatching = true
   currentAnime = animeTitle
   currentEpisode = episodeName
   currentProvider = provider
   
   startTimestamp = new Date() // Reset timer for playback
+  const largeImageKey = await fetchAnimeImage(animeTitle)
+  
   safeSetActivity({
     details: `Đang xem: ${animeTitle}`,
     state: `${provider.toUpperCase()} | ${episodeName}`,
     startTimestamp,
-    largeImageKey: 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/15.1.0/72x72/1f4fa.png',
-    largeImageText: 'NekoStream',
+    largeImageKey,
+    largeImageText: animeTitle,
     smallImageKey: 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/15.1.0/72x72/25b6.png',
     smallImageText: 'Playing',
     instance: false,
