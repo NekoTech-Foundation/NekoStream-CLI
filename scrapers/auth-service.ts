@@ -136,7 +136,10 @@ async function applyAdBlocking(context: import('playwright').BrowserContext): Pr
         img[src*="sunwin"], img[src*="gemwin"],
         [class*="quang-cao"], [id*="quang-cao"],
         [class*="popup-ad"], [class*="ad-overlay"],
-        [class*="sticky-ad"], [class*="fixed-ad"], [class*="float-ad"] {
+        [class*="sticky-ad"], [class*="fixed-ad"], [class*="float-ad"],
+        div.MnBr.EcBgA, div.announcement, div a img, section.Wdgt, 
+        aside div ul, footer.Footer, div.header-ads-pc, ol.breadcrumb, 
+        aside.widget-area, header.Header.MnBrCn.BgA.HdOp1 {
           display: none !important;
           visibility: hidden !important;
           pointer-events: none !important;
@@ -149,19 +152,28 @@ async function applyAdBlocking(context: import('playwright').BrowserContext): Pr
     } else {
       hideAds()
     }
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const node of Array.from(mutation.addedNodes)) {
-          if (!(node instanceof HTMLElement)) continue
-          const html = (node.outerHTML || '').toLowerCase()
-          if (/win88|yo88|i9bet|sunwin|vsbet|five88|hit\.club|gemwin|789bet/.test(html)) {
-            node.remove()
+    const startObserver = () => {
+      // Periodic aggressive cleanup to handle SPAs and race conditions
+      setInterval(() => {
+        try {
+          const elements = document.querySelectorAll('div.MnBr.EcBgA, div.announcement, div a img, section.Wdgt, aside div ul, footer.Footer, div.header-ads-pc, ol.breadcrumb, aside.widget-area, header.Header.MnBrCn.BgA.HdOp1, [class*="quang-cao"], [id*="quang-cao"], [class*="popup-ad"], [class*="ad-overlay"], [class*="sticky-ad"], [class*="fixed-ad"], [class*="float-ad"]');
+          for (const el of Array.from(elements)) {
+            el.remove();
           }
-        }
-      }
-    })
-    const startObserver = () => observer.observe(document.body || document.documentElement, { childList: true, subtree: true })
-    document.body ? startObserver() : document.addEventListener('DOMContentLoaded', startObserver)
+          
+          // Also check all links and images for ad keywords
+          const allElements = document.querySelectorAll('a, img');
+          for (const el of Array.from(allElements)) {
+            const html = (el.outerHTML || '').toLowerCase();
+            if (/win88|yo88|i9bet|sunwin|vsbet|five88|hit\.club|gemwin|789bet/.test(html)) {
+              el.remove();
+            }
+          }
+        } catch (e) {}
+      }, 50)
+    }
+    
+    startObserver();
   })
 }
 
@@ -242,6 +254,30 @@ export async function loginAnimeVietsubInteractive(): Promise<ProviderAuthStatus
 
   try {
     await page.goto(AVS_LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 30000 })
+
+    // Force inject CSS bypassing CSP to ensure ads are hidden even if they use inline blocks
+    await page.addStyleTag({
+      content: `
+        a[href*="win88"], a[href*="yo88"], a[href*="i9bet"],
+        a[href*="sunwin"], a[href*="vsbet"], a[href*="five88"],
+        a[href*="hit.club"], a[href*="gemwin"], a[href*="789bet"],
+        img[src*="win88"], img[src*="yo88"], img[src*="i9bet"],
+        img[src*="sunwin"], img[src*="gemwin"],
+        [class*="quang-cao"], [id*="quang-cao"],
+        [class*="popup-ad"], [class*="ad-overlay"],
+        [class*="sticky-ad"], [class*="fixed-ad"], [class*="float-ad"],
+        div.MnBr.EcBgA, div.announcement, div a img, section.Wdgt, 
+        aside div ul, footer.Footer, div.header-ads-pc, ol.breadcrumb, 
+        aside.widget-area, header.Header.MnBrCn.BgA.HdOp1 {
+          display: none !important;
+          visibility: hidden !important;
+          pointer-events: none !important;
+          opacity: 0 !important;
+          width: 0 !important;
+          height: 0 !important;
+        }
+      `
+    }).catch(() => {})
 
     // Wait for successful login (redirect away from login page)
     await page.waitForFunction(

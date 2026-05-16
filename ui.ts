@@ -1,6 +1,8 @@
 import chalk from 'chalk'
 import { loadSettings } from './storage'
 import type { AnimeDetail } from './scrapers/base'
+import * as fs from 'fs'
+import * as path from 'path'
 
 export function clearScreen() {
   try {
@@ -47,18 +49,37 @@ function applyGradient(text: string, startHex: string, endHex: string) {
 export function printBanner(title?: string, subtitle?: string) {
   console.log('\n');
   
-  // Pink to Purple
-  const iconTop = applyGradient(' ▝▜▄ ', '#FF69B4', '#9b59b6');
-  // Dark Blue to Cyan
-  const iconBottom = applyGradient(' ▗▟▀ ', '#2980b9', '#00bcd4');
+  let version = 'unknown'
+  try {
+    const isCompiled = __dirname.endsWith('dist') || __dirname.endsWith('dist\\') || __dirname.endsWith('dist/')
+    const basePath = isCompiled ? path.join(__dirname, '..') : __dirname
+    const pkg = JSON.parse(fs.readFileSync(path.join(basePath, 'package.json'), 'utf-8'))
+    version = pkg.version
+  } catch(e) {}
+
+  const bracket = [
+    " ▝▜▄   ",
+    "   ▝▜▄ ",
+    "  ▗▟▀  ",
+    " ▝▀    "
+  ];
   
-  console.log(`${iconTop} ${chalk.bold.white('NekoStream CLI v1.0.7')}`);
+  const color1 = hexToRgb('#4285F4');
+  const color2 = hexToRgb('#DB2777');
   
-  const line2 = title ? title : '';
-  console.log(`${iconBottom} ${chalk.cyan(line2)}`);
-  
+  const coloredBracket = bracket.map((line, i) => {
+    const factor = i / 3;
+    const color = interpolateColor(color1, color2, factor);
+    return chalk.rgb(color[0], color[1], color[2]).bold(line);
+  });
+
+  console.log(`${coloredBracket[0]}  ${chalk.bold.white(`NekoStream CLI v${version}`)}`);
+  console.log(`${coloredBracket[1]}`);
+  console.log(`${coloredBracket[2]}  ${chalk.cyan(title ? title : '')}`);
   if (subtitle) {
-    console.log(`      ${chalk.gray(subtitle)}`);
+    console.log(`${coloredBracket[3]}  ${chalk.gray(subtitle)}`);
+  } else {
+    console.log(`${coloredBracket[3]}`);
   }
   console.log('');
 }

@@ -56,7 +56,7 @@ export interface AnimeDetailExtended extends AnimeDetail {
 
 export class AnimeVietsubProvider extends BaseScraper {
   name = 'AnimeVietsub'
-  baseUrl = 'https://animevietsub.bz'
+  baseUrl = 'https://animevietsub.site'
 
   // User endpoints omitted in standalone CLI
   private toMediaProxyUrl(sourceUrl: string, referer: string): string {

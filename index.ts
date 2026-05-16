@@ -29,9 +29,9 @@ async function showSettingsMenu() {
   while (true) {
     clearScreen()
     printBanner('Settings', 'Configure your default preferences')
-    
+
     const settings = loadSettings()
-    
+
     const { action } = await prompts({
       type: 'select',
       name: 'action',
@@ -73,7 +73,7 @@ async function showSettingsMenu() {
     if (action === 'autoplay') {
       saveSettings({ autoPlayNext: !settings.autoPlayNext })
     }
-    
+
     if (action === 'devmode') {
       saveSettings({ developerMode: !settings.developerMode })
     }
@@ -82,20 +82,20 @@ async function showSettingsMenu() {
       while (true) {
         clearScreen()
         printBanner('Provider Domains', 'Set custom domains to bypass blocks')
-        
+
         const currentDomains = loadSettings().providerDomains || {}
-        
+
         const domainChoices = Object.keys(providers).map((name, idx) => {
           const defaultDomain = providers[name].baseUrl
           const currentDomain = currentDomains[name] || defaultDomain
           const isCustom = !!currentDomains[name]
-          
+
           return {
             title: `[${idx + 1}] ${chalk.bold(name)}: ${isCustom ? chalk.green(currentDomain) : chalk.gray(currentDomain)}`,
             value: name
           }
         })
-        
+
         domainChoices.push({ title: chalk.red('Reset All to Default'), value: 'reset' } as any)
         domainChoices.push({ title: chalk.gray('Back to Settings'), value: 'back' } as any)
 
@@ -140,9 +140,9 @@ async function showHistoryMenu() {
   while (true) {
     clearScreen()
     printBanner('Continue Watching', 'Resume from where you left off')
-    
+
     const history = loadHistory()
-    
+
     if (history.length === 0) {
       console.log(chalk.yellow('Your history is empty.'))
       await sleep(2000)
@@ -193,12 +193,12 @@ async function showAnimeList(providerName: string, title: string, list: AnimeSea
   while (true) {
     clearScreen()
     printBanner(`Provider: ${providerName.toUpperCase()}`, title.toUpperCase())
-    
+
     // Fix for prompts Windows bug: Flush any leftover escape sequences or buffered keys 
     // that might corrupt the next prompt's raw mode and cause the ^[[B bug.
     if (process.stdin.isTTY) {
       process.stdin.resume()
-      while (process.stdin.read() !== null) {}
+      while (process.stdin.read() !== null) { }
     }
 
     const { animeId } = await prompts({
@@ -224,7 +224,7 @@ async function showAnimeList(providerName: string, title: string, list: AnimeSea
 
 async function openAnimeMenu(providerName: string, animeId: string) {
   const provider = getProvider(providerName)
-  
+
   // Fetch details & episodes
   const epsSpinner = ora('Fetching details and episodes...').start()
   let episodes = []
@@ -272,7 +272,7 @@ async function openAnimeMenu(providerName: string, animeId: string) {
 
     if (process.stdin.isTTY) {
       process.stdin.resume()
-      while (process.stdin.read() !== null) {}
+      while (process.stdin.read() !== null) { }
     }
 
     const episodeChoices: any[] = [{ separator: 'DANH SÁCH TẬP' }]
@@ -349,7 +349,7 @@ async function openAnimeMenu(providerName: string, animeId: string) {
       }
 
       console.log(chalk.green(`\n✅ Ready to play! Opening Player...`))
-      
+
       // Save history
       saveHistoryEntry({
         provider: providerName,
@@ -434,21 +434,21 @@ async function showProviderAccountMenu(provider: 'animevietsub' | 'anime47'): Pr
 
     const choices = status.loggedIn
       ? [
-          { title: 'Hộp phim / Yêu thích', value: 'favorites' },
-          { title: 'Lịch sử xem', value: 'history' },
-          ...(provider === 'animevietsub' ? [] : [
-            { title: 'Đang xem', value: 'watching' },
-            { title: 'Hoàn thành', value: 'completed' },
-            { title: 'Dự định xem', value: 'plan_to_watch' },
-          ]),
-          { title: 'Thông báo', value: 'notifications' },
-          { title: chalk.red('Đăng xuất'), value: 'logout' },
-          { title: chalk.gray('Quay lại'), value: 'back' }
-        ]
+        { title: 'Hộp phim / Yêu thích', value: 'favorites' },
+        { title: 'Lịch sử xem', value: 'history' },
+        ...(provider === 'animevietsub' ? [] : [
+          { title: 'Đang xem', value: 'watching' },
+          { title: 'Hoàn thành', value: 'completed' },
+          { title: 'Dự định xem', value: 'plan_to_watch' },
+        ]),
+        { title: 'Thông báo', value: 'notifications' },
+        { title: chalk.red('Đăng xuất'), value: 'logout' },
+        { title: chalk.gray('Quay lại'), value: 'back' }
+      ]
       : [
-          { title: chalk.cyan('🔑 Đăng nhập'), value: 'login' },
-          { title: chalk.gray('Quay lại'), value: 'back' }
-        ]
+        { title: chalk.cyan('🔑 Đăng nhập'), value: 'login' },
+        { title: chalk.gray('Quay lại'), value: 'back' }
+      ]
 
     const { action } = await prompts({ type: 'select', name: 'action', message: `${label} — Chọn hành động`, choices })
     if (!action || action === 'back') break
@@ -571,11 +571,11 @@ async function checkUpdate() {
       clearScreen()
       console.log(chalk.yellow('╭─────────────────────────────────────────────────────────────╮'))
       console.log(chalk.yellow('│                                                             │'))
-      console.log(chalk.yellow(`│  🚀 CÓ PHIÊN BẢN MỚI! ${chalk.red(currentVersion)} → ${chalk.green(latestVersion)}                  │`))
-      console.log(chalk.yellow('│  Bắt buộc phải cập nhật để tiếp tục sử dụng ứng dụng.       │'))
+      console.log(chalk.yellow(`│  NEKOSTREAM ĐÃ CÓ CẬP NHẬT MỚI ! ${chalk.red(currentVersion)} → ${chalk.green(latestVersion)}                  │`))
+      console.log(chalk.yellow('│  Vui lòng cập nhật ứng dụng CLI để tiếp tục sử dụng ứng dụng.  │'))
       console.log(chalk.yellow('│                                                             │'))
       console.log(chalk.yellow('╰─────────────────────────────────────────────────────────────╯\n'))
-      
+
       const { update } = await prompts({
         type: 'confirm',
         name: 'update',
@@ -612,7 +612,7 @@ async function main() {
     clearScreen()
 
     const authStatus = await getAuthStatus(currentProviderName as any)
-    const usernameDisplay = authStatus.loggedIn 
+    const usernameDisplay = authStatus.loggedIn
       ? chalk.green(`${authStatus.userDisplayName || 'Đã đăng nhập'} (${authStatus.cookieCount || 0} cookies)`)
       : chalk.red('Chưa đăng nhập')
 
@@ -681,8 +681,17 @@ async function main() {
     const provider = getProvider(currentProviderName)
 
     if (action === 'login') {
-      if (currentProviderName === 'anime47') await loginAnime47Interactive()
-      else if (currentProviderName === 'animevietsub') await loginAnimeVietsubInteractive()
+      try {
+        if (currentProviderName === 'anime47') await loginAnime47Interactive()
+        else if (currentProviderName === 'animevietsub') await loginAnimeVietsubInteractive()
+      } catch (e: any) {
+        if (e.name === 'TimeoutError') {
+          console.log(chalk.red('\nĐăng nhập thất bại/Đã hủy: Hết thời gian chờ (Timeout).'))
+        } else {
+          console.log(chalk.red(`\nLỗi: ${e.message}`))
+        }
+        await sleep(2000)
+      }
       continue
     }
 
